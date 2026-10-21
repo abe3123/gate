@@ -22,7 +22,7 @@ VPN Gate 官方源
 保留成功节点 → 按国家分组 → 住宅/机房标注 → 延迟排序
       │
       ▼
-生成 nodes.txt (GitHub Pages 发布)
+生成 nodes.txt (发布到 Cloudflare Pages 或 GitHub Pages)
       │
       ▼
 edgetunnel 后台「自定义优选IP」框填 https://…/nodes.txt
@@ -30,6 +30,40 @@ edgetunnel 后台「自定义优选IP」框填 https://…/nodes.txt
       ▼
 客户端订阅 edgetunnel 订阅 → 使用 SSTP 家宽节点 (每 30 分钟自动换)
 ~~~
+
+---
+
+## 🚀 极速部署：纯 Cloudflare 运行（无需 GitHub，无需 Python）
+
+本项目现已全面支持 **纯 Cloudflare Pages / Worker 原生运行**！
+不需要 GitHub 账号、不需要 GitHub Actions、不需要 Python 环境，全部抓取与检测逻辑 100% 在 Cloudflare 边缘计算（V8 引擎）中自动完成。
+
+### 方式 1：Cloudflare Pages 直接上传（推荐，带可视化面板）
+1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com/)，点击左侧 **Workers 和 Pages**。
+2. 点击 **创建** -> 选择 **Pages** -> 点击 **上传资产 (Upload assets)**。
+3. 输入项目名称（例如 `gate`）。
+4. 上传本仓库根目录下的 `cloudflare-pages-deploy.zip`（或者直接将 `web` 目录拖拽到上传区域）。
+5. 点击 **部署站点 (Deploy site)**。
+6. 完成！你的专属节点与面板地址即为：
+   - ⚡ **默认节点订阅（免检测极速模式 · 80+ 节点 · 住宅优先）**：`https://你的项目名.pages.dev/nodes.txt`
+   - 🏡 **仅住宅家宽订阅（纯家宽 IP）**：`https://你的项目名.pages.dev/nodes.txt?type=residential`
+   - 🇯🇵 **指定国家订阅（如仅日本节点）**：`https://你的项目名.pages.dev/nodes.txt?country=JP`
+   - 🔍 **严格检测订阅（Worker 测活与反查）**：`https://你的项目名.pages.dev/nodes.txt?mode=check`
+   - 📊 **可视化控制看板**：`https://你的项目名.pages.dev/`
+
+> **💡 核心优化与特性**：
+> 1. **智能家宽启发式判定**：免检测模式下自动识别 SoftEther 动态 DDNS 主机名（如 `vpn\d+`），精准区分 **住宅 IP (60+ 个)** 与 **数据中心机房**，并将住宅宽带优先排序！
+> 2. **灵活参数定制订阅**：支持在 `nodes.txt` URL 上追加 `?type=residential`、`?country=JP`、`?limit=30` 等组合参数定制专属节点；
+> 3. **Anycast 优选融合**：自动将裸 `sstp://` 节点与 Cloudflare 全球 CDN 优选入口池绑定（例如 `saas.sin.fan:443#日本-住宅-01$sstp://...`），多源优选容错防 403 阻断；
+> 4. **看板体验升级**：内置即时搜索、国家折叠面板、住宅/机房分布统计、免弹窗无感复制等现代微交互。
+
+### 方式 2：作为 Cloudflare Worker 直接粘贴部署（最快 30 秒上线）
+1. 登录 Cloudflare 控制台，点击 **Workers 和 Pages** -> **创建 Worker**，起名如 `gate`，点击 **部署**。
+2. 进入 Worker 详情页，点击右上角 **编辑代码**。
+3. 清空左侧代码编辑器，将本项目根目录的 `_worker.js` 全部代码复制粘贴进去。
+4. 点击右上角 **保存并部署**。
+5. 你的专属节点地址即为：
+   - `https://gate.你的用户名.workers.dev/nodes.txt`
 
 ---
 
@@ -66,31 +100,55 @@ edgetunnel 后台「自定义优选IP」框填 https://…/nodes.txt
 
 在 GitHub 上打开本仓库，点 **Fork**，复制到你账号下。
 
-### 第 4 步：修改配置（重点）
+### 第 4 步：选择部署方式（Cloudflare Pages 或 GitHub Pages）
 
-进你 fork 的仓库，修改 `vpngate.py`：
+强烈推荐部署到 **Cloudflare Pages**：全球 Anycast CDN 加速、国内访问顺畅不丢包、支持免费绑定自定义域名。
 
-| 文件 | 位置 | 改成什么 | 为什么 |
-| :--- | :--- | :--- | :--- |
-| .github/workflows/check.yml | env 里的 `CHECK_WORKER` | 你的检测 Worker 域名，形如 `https://xxx.workers.dev/check?sstp=vpn:vpn@` | 检测统一走你自己的 Worker |
-| vpngate.py | `NODES_URL` | 把里面写死的固定地址换成 `你的用户名/仓库名` | 自动更新时用到的固定地址 |
+#### 方案 A：通过 GitHub Actions 自动发布到 Cloudflare Pages（强烈推荐 ⭐⭐⭐⭐⭐）
+> **优势**：每 30 分钟由 GitHub Actions 自动定时检测节点并直接上传到 Cloudflare Pages，**零消耗 Cloudflare Pages 每月 500 次构建限额**。
 
-> **注意**：`vpngate.py` 中**不需要**配置 `EDT_UUID` 和 `EDT_DOMAIN`。你之前看到的这两个变量是旧版遗留，现已删除。edgetunnel 后台会自己处理 UUID 和域名。
+1. **获取 Cloudflare API 凭证**：
+   - 登录 Cloudflare 控制台，进入右上角 **我的个人资料** -> **API 令牌** -> 点击 **创建令牌**。
+   - 选择 **自定义令牌** (Create Custom Token) -> 点击 **开始使用**：
+     - **令牌名称**：如 `Pages-Deploy`
+     - **权限**：选择 **账户** (Account) -> **Cloudflare Pages** -> **编辑** (Edit)
+     - 点击 **继续以显示摘要** -> **创建令牌**，复制并保存好该 Token。
+   - 在 Cloudflare 控制台任意页面右侧或 URL 中获取你的 **Account ID**（账户 ID，32 位字符串）。
+2. **在 GitHub 仓库添加 Secrets**：
+   - 进你 fork 的仓库 -> **Settings** -> **Secrets and variables** -> **Actions** -> 点击 **New repository secret**：
+     - `CLOUDFLARE_API_TOKEN`：填入上面生成的 API 令牌
+     - `CLOUDFLARE_ACCOUNT_ID`：填入你的 Cloudflare 账户 ID
+     - `CLOUDFLARE_PROJECT_NAME`（可选）：填入你在 Pages 上的项目名称（默认会自动使用 `gate`）
+     - `CHECK_WORKER`（可选）：如果你在第 2 步部署了自己的检测 Worker，可填入形如 `https://xxx.workers.dev/check?sstp=vpn:vpn@`；若不填则默认使用内置公共检测服务。
+3. **启用 Actions 定时任务**：
+   - 进仓库 **Actions** 标签页，如果提示启用 Actions 请点击启用。
+   - 手动触发一次：点击左侧 **VPN Gate Node Check** -> **Run workflow** -> 点击绿色 **Run workflow** 按钮。
+   - 运行完成后，工作流会自动创建并部署 Cloudflare Pages，并在日志中输出你的专属订阅地址：
+     ~~~text
+     https://你的项目名.pages.dev/nodes.txt
+     ~~~
 
-### 第 5 步：开启 GitHub Pages 与 Actions
+#### 方案 B：直接在 Cloudflare Pages 控制台关联构建
+1. 登录 Cloudflare 控制台 -> **Workers 和 Pages** -> 点击 **创建** -> **Pages** -> 选择 **连接到 Git**。
+2. 授权并选中你 Fork 的 `gate` 仓库。
+3. 构建配置：
+   - **框架预设 (Framework preset)**：选择 `无 (None)`
+   - **构建命令 (Build command)**：`pip install -r requirements.txt && python vpngate.py`
+   - **构建输出目录 (Build output directory)**：`public`
+   - **环境变量 (Environment variables)**：
+     - 添加 `CHECK_WORKER`，值填你的检测 Worker 域名（可选）
+4. 点击 **保存并部署**。
+> *注：Cloudflare Pages 仅在代码 Push 时自动构建。如需定时更新，可在 Pages 项目的「设置」->「构建与部署」中创建 Deploy Hook，配合外部定时请求（如 cron-job.org），但请注意免费版每月有 500 次构建限额。*
 
-1. 进你 fork 的仓库 → Settings → Pages，Source 设为 **GitHub Actions**
-2. 进 Actions 页，若提示启用 Actions 就点启用
-3. 手动触发一次：Actions → VPN Gate Node Check → Run workflow → Run workflow
-4. 等它跑完（约 1 分钟），看到绿色 ✓ 即成功
+---
 
-### 第 6 步：确认产物
+### 第 5 步：确认产物
 
-跑完后，你的站点地址是：
-~~~text
-https://你的GitHub用户名.github.io/仓库名/nodes.txt
-~~~
-浏览器打开，能看到一堆 `优选域名:443#国家-住宅-XX …` 的行，就说明全部打通了。
+无论使用方案 A 还是方案 B，部署成功后直接访问你的站点：
+- **节点订阅地址**：`https://你的项目名.pages.dev/nodes.txt`
+- **可视化状态面板**：`https://你的项目名.pages.dev/` （顶部自带一键复制订阅网址按钮）
+
+浏览器打开 `nodes.txt`，能看到包含住宅/机房标注的优选节点列表即表示全部打通！
 
 ---
 
@@ -99,8 +157,9 @@ https://你的GitHub用户名.github.io/仓库名/nodes.txt
 1. 进 edgetunnel 后台（你的域名/admin），找到「自定义优选IP」文本框
 2. 粘贴**一行网址**：
    ~~~text
-   https://你的GitHub用户名.github.io/仓库名/nodes.txt
+   https://你的项目名.pages.dev/nodes.txt
    ~~~
+   *(若使用 GitHub Pages，则填 `https://你的GitHub用户名.github.io/仓库名/nodes.txt`)*
 3. 点保存
 4. 客户端刷新订阅 → 每次刷新 edgetunnel 都重新拉取一次 nodes.txt，节点自动更新
 
@@ -154,7 +213,7 @@ https://你的GitHub用户名.github.io/仓库名/nodes.txt
 
 ---
 
-*流水线：GitHub Actions（每 30 分钟 cron） → vpngate.py → 检测 Worker → GitHub Pages*
+*流水线：GitHub Actions（每 30 分钟 cron） → vpngate.py → 检测 Worker → Cloudflare Pages / GitHub Pages*
 
 ---
 
